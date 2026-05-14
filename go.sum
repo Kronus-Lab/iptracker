@@ -1,0 +1,4 @@
+github.com/joeig/go-powerdns/v3 v3.21.0 h1:W5XdncBvIK9H/Arj8FNUgvQ4cywUEeUWTKtfD3ad6SQ=
+github.com/joeig/go-powerdns/v3 v3.21.0/go.mod h1:627YE9sB9IJjAdt8Ywz+zsTrEp6pAOwGsaNpJBUERjE=
+github.com/spf13/pflag v1.0.10 h1:4EBh2KAYBwaONj6b2Ye1GiHfwjqyROoF4RwYO+vPwFk=
+github.com/spf13/pflag v1.0.10/go.mod h1:McXfInJRrz4CZXVZOBLb0bTZqETkiAhM9Iw0y3An2Bg=
