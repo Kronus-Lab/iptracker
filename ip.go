@@ -11,8 +11,10 @@ import (
 
 const maxIPResponseSize = 45
 
-func getLiveIP(ctx context.Context, httpClient *http.Client) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://ifconfig.me", nil)
+const defaultIPCheckURL = "https://ifconfig.me"
+
+func getLiveIP(ctx context.Context, httpClient *http.Client, url string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", &IPCheckError{Err: fmt.Errorf("create request: %w", err)}
 	}

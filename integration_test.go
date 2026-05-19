@@ -10,6 +10,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -389,4 +391,180 @@ func TestIntegration_MultipleRRSets(t *testing.T) {
 	}
 
 	waitForNtfyMessage(t, ntfyURL, ntfyTopic, "IP address updated: "+testNewIP)
+}
+
+func buildBinary(t *testing.T) string {
+	t.Helper()
+	tmpDir := t.TempDir()
+	binary := filepath.Join(tmpDir, "iptracker")
+	output, err := exec.Command("go", "build", "-o", binary, ".").CombinedOutput()
+	if err != nil {
+		t.Fatalf("failed to build binary: %v\n%s", err, output)
+	}
+	return binary
+}
+
+func runBinary(t *testing.T, binary string, args ...string) (string, int) {
+	t.Helper()
+	cmd := exec.Command(binary, args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	cmd.Run()
+	exitCode := 0
+	if cmd.ProcessState != nil {
+		exitCode = cmd.ProcessState.ExitCode()
+	}
+	return stderr.String(), exitCode
+}
+
+func TestIntegration_Main_MissingAPIKey(t *testing.T) {
+	binary := buildBinary(t)
+	stderr, exitCode := runBinary(t, binary)
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1, got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "--pdns_apikey is required") {
+		t.Fatalf("expected error about --pdns_apikey, got:\n%s", stderr)
+	}
+}
+
+func TestIntegration_Main_MissingURL(t *testing.T) {
+	binary := buildBinary(t)
+	stderr, exitCode := runBinary(t, binary, "--pdns_apikey=testkey")
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1, got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "--pdns_url is required") {
+		t.Fatalf("expected error about --pdns_url, got:\n%s", stderr)
+	}
+}
+
+func TestIntegration_Main_MissingRRSet(t *testing.T) {
+	binary := buildBinary(t)
+	stderr, exitCode := runBinary(t, binary, "--pdns_apikey=testkey", "--pdns_url=http://localhost:8081")
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1, got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "at least one --rrset is required") {
+		t.Fatalf("expected error about --rrset, got:\n%s", stderr)
+	}
+}
+
+func TestIntegration_Main_NegativeInterval(t *testing.T) {
+	binary := buildBinary(t)
+	stderr, exitCode := runBinary(t, binary,
+		"--pdns_apikey=testkey",
+		"--pdns_url=http://localhost:8081",
+		"-r", "myhost.example.com.,example.com.",
+		"-b",
+		"-i=-1s",
+	)
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1, got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "--interval must be positive") {
+		t.Fatalf("expected error about --interval, got:\n%s", stderr)
+	}
+}
+
+func TestIntegration_Main_InvalidDiscordWebhook(t *testing.T) {
+	binary := buildBinary(t)
+	stderr, exitCode := runBinary(t, binary,
+		"--pdns_apikey=testkey",
+		"--pdns_url=http://localhost:8081",
+		"-r", "myhost.example.com.,example.com.",
+		"--discord=ftp://bad",
+	)
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1, got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "invalid --discord") {
+		t.Fatalf("expected error about --discord, got:\n%s", stderr)
+	}
+}
+
+func TestIntegration_Main_InvalidNtfyWebhook(t *testing.T) {
+	binary := buildBinary(t)
+	stderr, exitCode := runBinary(t, binary,
+		"--pdns_apikey=testkey",
+		"--pdns_url=http://localhost:8081",
+		"-r", "myhost.example.com.,example.com.",
+		"--ntfy=ftp://bad",
+	)
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1, got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "invalid --ntfy") {
+		t.Fatalf("expected error about --ntfy, got:\n%s", stderr)
+	}
+}
+
+func TestIntegration_Client_NewRecordsClient(t *testing.T) {
+	pdnsURL := envOrDefault("PDNS_URL", defaultPDNSURL)
+	pdnsKey := envOrDefault("PDNS_API_KEY", defaultPDNSKey)
+	waitForPowerDNS(t, pdnsKey, pdnsURL)
+
+	httpClient := newTestHTTPClient()
+	client := newRecordsClient(pdnsKey, pdnsURL, httpClient)
+	if client == nil {
+		t.Fatal("expected non-nil RecordsClient")
+	}
+}
+
+func TestIntegration_Client_Get(t *testing.T) {
+	recordsClient, _, _, cleanup := setupIntegration(t)
+	defer cleanup()
+
+	pdnsURL := envOrDefault("PDNS_URL", defaultPDNSURL)
+	pdnsKey := envOrDefault("PDNS_API_KEY", defaultPDNSKey)
+	waitForPowerDNS(t, pdnsKey, pdnsURL)
+
+	httpClient := newTestHTTPClient()
+	concreteClient := newRecordsClient(pdnsKey, pdnsURL, httpClient)
+
+	rrsets, err := concreteClient.Get(context.Background(), testZone, testRecord, powerdns.RRTypePtr(powerdns.RRTypeA))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(rrsets) != 1 {
+		t.Fatalf("expected 1 rrset, got %d", len(rrsets))
+	}
+	if len(rrsets[0].Records) != 1 || rrsets[0].Records[0].Content == nil {
+		t.Fatal("expected 1 record with non-nil content")
+	}
+	if *rrsets[0].Records[0].Content != testInitialIP {
+		t.Errorf("expected IP %s, got %s", testInitialIP, *rrsets[0].Records[0].Content)
+	}
+
+	_ = recordsClient
+}
+
+func TestIntegration_Client_Change(t *testing.T) {
+	pdnsURL := envOrDefault("PDNS_URL", defaultPDNSURL)
+	pdnsKey := envOrDefault("PDNS_API_KEY", defaultPDNSKey)
+	waitForPowerDNS(t, pdnsKey, pdnsURL)
+
+	zone := "clienttest.example.net."
+	seedZone(t, pdnsKey, pdnsURL, zone)
+	defer deleteZone(t, pdnsKey, pdnsURL, zone)
+
+	httpClient := newTestHTTPClient()
+	concreteClient := newRecordsClient(pdnsKey, pdnsURL, httpClient)
+	record := "test." + zone
+
+	err := concreteClient.Change(context.Background(), zone, record, powerdns.RRTypeA, 60, []string{testInitialIP})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	rrsets, err := concreteClient.Get(context.Background(), zone, record, powerdns.RRTypePtr(powerdns.RRTypeA))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(rrsets) == 0 || len(rrsets[0].Records) == 0 || rrsets[0].Records[0].Content == nil {
+		t.Fatal("expected record to exist after Change")
+	}
+	if *rrsets[0].Records[0].Content != testInitialIP {
+		t.Errorf("expected IP %s, got %s", testInitialIP, *rrsets[0].Records[0].Content)
+	}
 }

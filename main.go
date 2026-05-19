@@ -85,7 +85,7 @@ func main() {
 }
 
 func runOnce(ctx context.Context, httpClient *http.Client, pdnsApiKey, pdnsApiUrl, discord, ntfy string, recordSets rrsetSlice) {
-	liveIP, err := getLiveIP(ctx, httpClient)
+	liveIP, err := getLiveIP(ctx, httpClient, defaultIPCheckURL)
 	if err != nil {
 		slog.Warn("failed to get live IP", "error", err)
 		return
