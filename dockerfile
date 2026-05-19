@@ -4,5 +4,6 @@ COPY . .
 RUN go mod download && go build -o iptracker -v ./... && chmod +x iptracker
 
 FROM scratch
+USER bot
 COPY --from=build /app/iptracker .
 CMD ["iptracker"]
