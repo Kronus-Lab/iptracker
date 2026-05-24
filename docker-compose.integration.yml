@@ -7,12 +7,6 @@ services:
       - "8081:8081"
       - "1053:53"
       - "1053:53/udp"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf -H 'X-API-Key: testapikey' http://localhost:8081/api/v1/servers/localhost || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-      start_period: 10s
 
   ntfy:
     image: binwiederhier/ntfy:latest

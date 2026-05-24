@@ -11,8 +11,12 @@ import (
 
 const maxIPResponseSize = 45
 
-func getLiveIP(ctx context.Context, httpClient *http.Client) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://ifconfig.me", nil)
+const defaultIPCheckURL = "https://ifconfig.me"
+
+// getLiveIP fetches the public IPv4 address from the provided URL, validates that the response is a syntactically valid IPv4 address, and returns it.
+// On failure it returns an empty string and an *IPCheckError describing the cause.
+func getLiveIP(ctx context.Context, httpClient *http.Client, url string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", &IPCheckError{Err: fmt.Errorf("create request: %w", err)}
 	}
