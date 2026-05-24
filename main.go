@@ -13,6 +13,13 @@ import (
 	"github.com/spf13/pflag"
 )
 
+// main parses command-line flags, validates required configuration, prepares networking and signal handling,
+// and then executes the record-sync cycle once or repeatedly in daemon mode.
+//
+// It requires PowerDNS API key and URL and at least one --rrset value, validates optional webhook URLs,
+// and enforces a positive interval when running as a background daemon. It configures an HTTP client,
+// establishes cancellation on SIGINT/SIGTERM, and calls runOnce immediately; when in daemon mode it
+// repeats runOnce on each tick until shutdown.
 func main() {
 	pdnsApiKey := pflag.String("pdns_apikey", "", "Set the PowerDNS API Key")
 	pdnsApiUrl := pflag.String("pdns_url", "", "Set the PowerDNS API URL")
@@ -84,6 +91,11 @@ func main() {
 	}
 }
 
+// runOnce performs a single external-IP check and executes one reconciliation cycle
+// for the provided record sets using the PowerDNS API. If the live IP cannot be
+// obtained it logs a warning and returns; otherwise it creates a records client
+// and runs a processing cycle that reconciles DNS records with the retrieved IP
+// and sends notifications to the configured webhooks.
 func runOnce(ctx context.Context, httpClient *http.Client, pdnsApiKey, pdnsApiUrl, discord, ntfy string, recordSets rrsetSlice) {
 	liveIP, err := getLiveIP(ctx, httpClient, defaultIPCheckURL)
 	if err != nil {
