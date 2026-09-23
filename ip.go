@@ -18,13 +18,13 @@ const defaultIPCheckURL = "https://ifconfig.me"
 func getLiveIP(ctx context.Context, httpClient *http.Client, url string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return "", &IPCheckError{Err: fmt.Errorf("create request: %w", err)}
+		return "", &IPCheckError{Err: fmt.Errorf("create request to %s: %w", url, err)}
 	}
 	req.Header.Set("User-Agent", "curl/8.12.1")
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return "", &IPCheckError{Err: fmt.Errorf("reach ifconfig.me: %w", err)}
+		return "", &IPCheckError{Err: fmt.Errorf("reach %s: %w", url, err)}
 	}
 	defer resp.Body.Close()
 

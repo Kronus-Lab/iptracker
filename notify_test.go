@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -19,8 +20,17 @@ func TestNotifyDiscord_Success(t *testing.T) {
 		if r.Header.Get("Content-Type") != "application/json" {
 			t.Errorf("expected application/json content-type, got %s", r.Header.Get("Content-Type"))
 		}
-		body, _ := io.ReadAll(r.Body)
-		json.Unmarshal(body, &receivedBody)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("failed to read body: %v", err)
+			http.Error(w, "failed to read body", http.StatusBadRequest)
+			return
+		}
+		if err := json.Unmarshal(body, &receivedBody); err != nil {
+			t.Errorf("failed to unmarshal body: %v", err)
+			http.Error(w, "failed to unmarshal body", http.StatusBadRequest)
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer server.Close()
@@ -78,7 +88,12 @@ func TestNotifyNtfy_Success(t *testing.T) {
 		if r.Header.Get("Content-Type") != "text/plain" {
 			t.Errorf("expected text/plain content-type, got %s", r.Header.Get("Content-Type"))
 		}
-		body, _ := io.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("failed to read body: %v", err)
+			http.Error(w, "failed to read body", http.StatusBadRequest)
+			return
+		}
 		receivedBody = string(body)
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -227,12 +242,30 @@ func TestSendNotifications_BothFail(t *testing.T) {
 		t.Fatal("expected error when both fail")
 	}
 
-	var discordErr, ntfyErr *NotificationError
-	if !errors.As(err, &discordErr) {
-		t.Fatalf("expected discord NotificationError in joined error, got %T", err)
+	var services []string
+	var walk func(error)
+	walk = func(e error) {
+		if e == nil {
+			return
+		}
+		if multi, ok := e.(interface{ Unwrap() []error }); ok {
+			for _, child := range multi.Unwrap() {
+				walk(child)
+			}
+			return
+		}
+		var nerr *NotificationError
+		if errors.As(e, &nerr) {
+			services = append(services, nerr.Service)
+		}
 	}
-	if !errors.As(err, &ntfyErr) {
-		t.Fatalf("expected ntfy NotificationError in joined error, got %T", err)
+	walk(err)
+
+	if !slices.Contains(services, "discord") {
+		t.Fatalf("expected discord NotificationError in joined error, got services %v", services)
+	}
+	if !slices.Contains(services, "ntfy") {
+		t.Fatalf("expected ntfy NotificationError in joined error, got services %v", services)
 	}
 }
 
@@ -240,7 +273,11 @@ func TestNotifyDiscord_PayloadFormat(t *testing.T) {
 	var contentType string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		contentType = r.Header.Get("Content-Type")
-		io.ReadAll(r.Body)
+		if _, err := io.ReadAll(r.Body); err != nil {
+			t.Errorf("failed to read body: %v", err)
+			http.Error(w, "failed to read body", http.StatusBadRequest)
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer server.Close()
@@ -259,7 +296,12 @@ func TestNotifyNtfy_PayloadFormat(t *testing.T) {
 	var bodyStr string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		contentType = r.Header.Get("Content-Type")
-		body, _ := io.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("failed to read body: %v", err)
+			http.Error(w, "failed to read body", http.StatusBadRequest)
+			return
+		}
 		bodyStr = string(body)
 		w.WriteHeader(http.StatusOK)
 	}))

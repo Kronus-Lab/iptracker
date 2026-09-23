@@ -397,7 +397,9 @@ func buildBinary(t *testing.T) string {
 	t.Helper()
 	tmpDir := t.TempDir()
 	binary := filepath.Join(tmpDir, "iptracker")
-	output, err := exec.Command("go", "build", "-o", binary, ".").CombinedOutput()
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, "go", "build", "-o", binary, ".").CombinedOutput()
 	if err != nil {
 		t.Fatalf("failed to build binary: %v\n%s", err, output)
 	}
@@ -406,15 +408,26 @@ func buildBinary(t *testing.T) string {
 
 func runBinary(t *testing.T, binary string, args ...string) (string, int) {
 	t.Helper()
-	cmd := exec.Command(binary, args...)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, binary, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	cmd.Run()
-	exitCode := 0
-	if cmd.ProcessState != nil {
-		exitCode = cmd.ProcessState.ExitCode()
+	err := cmd.Run()
+	output := stderr.String()
+	if err == nil {
+		if cmd.ProcessState == nil {
+			return output + "\n" + "process reported success without process state", -1
+		}
+		return output, cmd.ProcessState.ExitCode()
 	}
-	return stderr.String(), exitCode
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		if exitErr.ProcessState == nil {
+			return output + "\n" + err.Error(), -1
+		}
+		return output, exitErr.ProcessState.ExitCode()
+	}
+	return output + "\n" + err.Error(), -1
 }
 
 func TestIntegration_Main_MissingAPIKey(t *testing.T) {
@@ -512,15 +525,16 @@ func TestIntegration_Client_NewRecordsClient(t *testing.T) {
 }
 
 func TestIntegration_Client_Get(t *testing.T) {
-	recordsClient, _, _, cleanup := setupIntegration(t)
-	defer cleanup()
-
 	pdnsURL := envOrDefault("PDNS_URL", defaultPDNSURL)
 	pdnsKey := envOrDefault("PDNS_API_KEY", defaultPDNSKey)
 	waitForPowerDNS(t, pdnsKey, pdnsURL)
 
 	httpClient := newTestHTTPClient()
 	concreteClient := newRecordsClient(pdnsKey, pdnsURL, httpClient)
+
+	seedZone(t, pdnsKey, pdnsURL, testZone)
+	defer deleteZone(t, pdnsKey, pdnsURL, testZone)
+	seedRecord(t, concreteClient, testZone, testRecord, testInitialIP)
 
 	rrsets, err := concreteClient.Get(context.Background(), testZone, testRecord, powerdns.RRTypePtr(powerdns.RRTypeA))
 	if err != nil {
@@ -535,8 +549,6 @@ func TestIntegration_Client_Get(t *testing.T) {
 	if *rrsets[0].Records[0].Content != testInitialIP {
 		t.Errorf("expected IP %s, got %s", testInitialIP, *rrsets[0].Records[0].Content)
 	}
-
-	_ = recordsClient
 }
 
 func TestIntegration_Client_Change(t *testing.T) {
