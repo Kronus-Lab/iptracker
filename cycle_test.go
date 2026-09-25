@@ -258,7 +258,7 @@ func TestRunCycle_NotificationError_DoesNotBlock(t *testing.T) {
 		"5.6.7.8",
 		rrsetSlice{{Name: "myhost.", Zone: "example.com."}},
 		mock,
-		"http://127.0.0.1:1/webhook",
+		badServer.URL+"/webhook",
 		"",
 		badClient,
 	)

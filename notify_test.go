@@ -197,6 +197,9 @@ func TestSendNotifications_Both(t *testing.T) {
 	if len(calls) != 2 {
 		t.Fatalf("expected 2 calls, got %d", len(calls))
 	}
+	if calls[0] != "/discord" || calls[1] != "/ntfy" {
+		t.Fatalf("expected paths /discord and /ntfy, got %v", calls)
+	}
 }
 
 func TestSendNotifications_DiscordFails(t *testing.T) {
