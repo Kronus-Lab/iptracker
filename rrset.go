@@ -5,13 +5,17 @@ import (
 	"strings"
 )
 
+// RRSet identifies a single DNS A record by its fully qualified name and zone.
 type RRSet struct {
+	// Name is the fully qualified record name, including the trailing dot.
 	Name string
+	// Zone is the PowerDNS zone that contains the record.
 	Zone string
 }
 
 type rrsetSlice []RRSet
 
+// String implements pflag.Value and returns the display form of the rrsets.
 func (r *rrsetSlice) String() string {
 	parts := make([]string, len(*r))
 	for i, rr := range *r {
@@ -20,10 +24,12 @@ func (r *rrsetSlice) String() string {
 	return strings.Join(parts, "; ")
 }
 
+// Type implements pflag.Value and returns the expected value format.
 func (r *rrsetSlice) Type() string {
 	return "record,zone"
 }
 
+// Set implements pflag.Value, parsing a "record,zone" tuple and appending it.
 func (r *rrsetSlice) Set(value string) error {
 	parts := strings.SplitN(value, ",", 2)
 	if len(parts) != 2 {
