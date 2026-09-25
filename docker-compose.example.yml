@@ -1,0 +1,10 @@
+services:
+  tracker:
+    image: "kr0nus/iptracker:latest"
+    command:
+      - "-b"
+      - "-i30s"
+      - '--pdns_url=http://192.168.0.10:8081'
+      - '--pdns_apikey=super_secret_p@ssword!'
+      - '-r test.kronus.dev,kronus.dev'
+      - '-r test2.kronus.dev,kronus.dev'
